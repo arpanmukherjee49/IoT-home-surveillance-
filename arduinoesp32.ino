@@ -1,39 +1,52 @@
-// Wokwi-ready ESP32 PIR Motion Detection with LED + Buzzer
-#define PIR_PIN 27       // PIR OUT pin
-#define LED_PIN 26       // LED pin
-#define BUZZER_PIN 25    // Buzzer pin
+// esp32_home_surveillance.ino
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <BlynkSimpleEsp32.h>
 
-// Debounce / cooldown
+char auth[] = "YOUR_BLYNK_TOKEN";   // Replace with your Blynk token
+char ssid[] = "YOUR_WIFI_SSID";     // Replace with your WiFi SSID
+char pass[] = "YOUR_WIFI_PASS";     // Replace with your WiFi password
+
+const int pirPin = 27;              // PIR sensor pin
 unsigned long lastTrigger = 0;
-const unsigned long debounceMs = 3000; // 3 seconds cooldown
-int pirState = LOW;
+const unsigned long debounceMs = 7000; // 7-second cooldown
+
+const char* serverIP = "PC_IP_ADDRESS"; // Replace with your PC IPv4 address
+const int serverPort = 5000;
 
 void setup() {
   Serial.begin(115200);
-  pinMode(PIR_PIN, INPUT);
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
-  Serial.println("System ready... Waiting for motion.");
+  pinMode(pirPin, INPUT);
+  Blynk.begin(auth, ssid, pass);
+  Serial.println("ESP32 Home Surveillance Ready");
 }
 
 void loop() {
-  int val = digitalRead(PIR_PIN);
+  Blynk.run();
+  int motion = digitalRead(pirPin);
 
-  if (val == HIGH && (millis() - lastTrigger > debounceMs)) {
-    pirState = HIGH;
+  if (motion == HIGH && (millis() - lastTrigger > debounceMs)) {
     lastTrigger = millis();
-
-    Serial.println("⚠️ Motion detected!");
-
-    digitalWrite(LED_PIN, HIGH);       // Turn on LED
-    tone(BUZZER_PIN, 2000, 500);       // Buzzer beep (500ms)
-
-    delay(1000);                       // Alert duration
-    digitalWrite(LED_PIN, LOW);        // Turn off LED
+    Serial.println("Motion detected!");
+    Blynk.notify("🚨 Motion detected! Capturing image...");
+    triggerCamera();
   }
-  else {
-    pirState = LOW;
-  }
+}
 
-  delay(50); // small delay for stability
+void triggerCamera() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String url = String("http://") + serverIP + ":" + serverPort + "/capture";
+    http.begin(url);
+    int httpCode = http.GET();
+    if (httpCode > 0) {
+      Serial.printf("HTTP Response code: %d\n", httpCode);
+      Serial.println(http.getString());
+    } else {
+      Serial.println("HTTP request failed");
+    }
+    http.end();
+  } else {
+    Serial.println("WiFi not connected");
+  }
 }
